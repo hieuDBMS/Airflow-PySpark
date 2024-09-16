@@ -1,0 +1,2 @@
+#Wait for an event for something to happen before executing the next task using decorator:
+@task.sensor()

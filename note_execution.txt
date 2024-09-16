@@ -1,0 +1,7 @@
+#   When using decorator, you need to call it.
+    For example task decorator, you need to call the function assigned with it ( this_function() )
+
+# When using operator, you just need to define it without calling it. It will appear in the Graph
+
+# Best repo to download files
+ https://repo1.maven.org/maven2

@@ -1,0 +1,30 @@
+#Execute the spark-config.sh
+/spark/sbin/spark-config.sh
+
+#Execute the load-spark-env.sh
+. "/spark/bin/load-spark-env.sh"
+
+#Log the result to terminal
+ln -sf /dev/stdout $SPARK_MASTER_LOG/spark-master.out
+
+#Represents the standard output stream , allows user to redirect output to terminal
+/dev/stdout
+
+#Create the link between files
+ln
+
+#Create the soft link (symbolic link)
+-s
+
+#This option ensures that the existing file or link named 'spark-master.out' will be removed before creating the new symbolic link
+-f
+
+# The dot '.' or 'source' command is used to execute commands from a file (Ex: .sh file) in the current shell session.
+. "/spark/sbin/spark-config.sh"
+
+# docker run -v ./path/to/local/stock_transform.py:/app/stock_transform.py my-spark-image\
+
+# to setup spark with AWS3 ( enable spark to interact with S3-compatible storage, you will need to include
+1. The appropriate Hadoop AWS and related JAR files in Spark setup : https://repo1.maven.org/maven2/org/apache/hadoop/hadoop-aws/3.3.2/hadoop-aws-3.3.2.jar
+2. The AWS SDK for java, which is required by hadoop-aws to interact with S3: https://repo1.maven.org/maven2/com/amazonaws/aws-java-sdk-bundle/1.11.1026/aws-java-sdk-bundle-1.11.1026.jar
+3  If wanting to connect any database, you also need to file jar of that database and add to /spark/jars

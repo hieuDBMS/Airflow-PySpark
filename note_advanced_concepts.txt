@@ -1,0 +1,18 @@
+***** Overview of advance concept *****
+# Subdags: pros and troubles
+# Exchanging data with Xcoms
+# Different paths with Branching
+# Dynamic DAGs with Templates, Macros and Variables
+# Customizing the trigger rules of your tasks
+# And more..
+
+
+# Subdags
+* The main DAG manages all the subDAGs as normal tasks
+* Airflow UI only shows the main DAG.
+* SubDags must be scheduled the same as their parent DAG
+* Use SubDags with caution
+* How to create SubDag?
+    - Create factory method that returns a DAG object with the tasks we want to combine
+*** when a SubDagOperator is triggered, it takes a worker slot and each task in the child DAG takes a slot as well until the entire SubDAG is finished
+    --> One way to avoid deadlocks is by creating a queue only for SubDags

@@ -1,0 +1,291 @@
+# Check if metadata database can be reached
+airflow db check
+
+# Purge old records in database tables in archive tables
+airflow db clean
+
+# Export archived data from the archive tables (default is csv)
+airflow db export-archived
+
+# Initialize the database
+airflow db init
+
+# Run subsections of a DAG for a specified data range
+airflow dags backfill my_dag --reset-dagrun --rerun-failed-tasks --run-backwards -s 2024-01-01 -e 2024-01-10
+
+# Re-sync DAGS. Use this command  to quickly update your code in the DAG to metadata database ( by default metadata database will take each 5 minutes to update with new DAG, and 30s to update the changes in existing DAG)
+airflow dags reserialize
+
+# List all the DAGS
+airflow dags list
+
+# Get the status of a DAG run
+airflow dag_state
+
+# Get the status of a Task instance
+airflow task_state
+
+# Test a task instance ( when adding new task to dag, should test it to avoid running dependencies and store to metadata database )
+airflow tasks test my_dag my_new_task 2024-01-01
+
+# Xcom is cross communication between tasks
+
+# Rerun the Dag run with the start date prior to the existing one, we use backfill
+# For instance, if a DAG has been running since the beginning of the month and a new task has been added to DAG,
+# And you want to re_execute it for the previous day ( from the beginning day to current day )
+# When to use backfill ?
+#    -> When you have created a DAG and want to run it for past intervals
+#    -> When a DAG or a task within a DAG has failed, and you want to rerun it for the failed intervals
+#    -> When you have modified an existing DAG and want to apply those changes to past runs
+#    -> When you want to rerun a specific task or a subset of tasks for a particular range of dates (sometime it is better to run specific task of subset of tasks instead of all tasks)
+# To use Backfill, you won't use User Interface but using CLI
+airflow dags backfill -s <start> -e <end> dag_id
+
+# The task has an internal setting called the try number. Each time a task runs to completion, this number increases regardless of the state of the task
+# -> The task has the number of retries, this can be set through parameter retries=n. After setting, the airflow will try the task n times before marking it failed
+# To rerun the task and dagrun and disable the retries
+airflow dags backfill -s 2024-01-29 -e 2024-02-22 --rerun-failed-tasks --reset-dagruns --disable-retry retail
+
+# By default the backfill will run from the oldest dag run date to the latest one
+
+# The backwards will run from the latest one to the oldest one, which is opposite to the backfill
+
+# By default the max number of dag runs occurring at the same time is 16. This is defined in Airflow configuration file
+Airflow config: max_active_runs_per_dag
+DAG parameter: max_active_runs ( the max number of dag runs that the DAG can run)
+
+# If the backfill run the DAG which lead to the maximum of dag runs(16) of the DAG, then the DAG can not run any dag run at the current date or the next date.
+# To handle this, we need to clone the DAG which we want to backfill and run it, this will keep the original DAG can run in the current or next day
+
+# All the dag runs (running) will be stored in pool of airflow. The maximum of pool is 128, if the number of dag runs exceed this, then we can not run any dag runs
+# To avoid that we need to create a dedicated pool for the backfilling process
+
+#There are 3 way to run backfill
+    1. run on local machine, must have enough resources for backfill and current tasks: airflow dags backfill -s 2024-01-01 -e 2024-01-05 --local
+    2. run on KubernetesExecutor (define the limit resources for kubernet worker that backfill can use )
+    3. celery executor: create a queue to send backfill tasks to a specific machine computer with some resources -> won't impact other tasks
+
+# Data integrity and Idempotency Of Backfill
+--> Ensure that your tasks are idempotent, meaning that they can be safely rerun multiple times without causing unintended consequences or duplicating data
+--> If your tasks perform write operations or modify external systems, double check that backfilling won't result in duplicate or inconsistent data
+
+# Use MERGE or INSERT with OVERWRITE/UPSERT, other the data will be duplicate
+Example: INSERT OVERWRITE TABLE processed.sessions
+PARTITION(ds=...)
+SELECT ....
+
+# Timezones in Python: Naive and Aware
+* Python datetime objects without the tzinfo parameter -> Timezone Naive
+* Python datetime objects with the tzinfo parameter -> Timezone Aware
+** Naive datatime objects are highly prone to errors because of bad interpretations
+
+# Timezones in Airflow
+* Airflow supports Timezones
+* Datetime information storedin UTC
+* The UI shows dates in UTC by default (you can change)
+* Up to you to deal with timezomes
+* default_timezome = UTC in the Airflow configuration file
+* Airflow uses the pendulum python library to deal with timezones
+
+# How to make your tasks dependent
+* depends_on_past (if some task in dag run 1 failed, then at the dag run 2, that task will not have status)
+    ->Defined at task level
+    ->If previous task instance failed, the current task is not executed
+    ->Consequently, the current task has no status
+    ->First task instance with start_date allowed to run
+* wait_for_downstream
+    ->Defined at task level
+    ->An instance of task X will wait for tasks immediately downstream of the previous instance of task X to finish successfully before it runs
+
+# How to structure DAG folder
+* Folder where your Airflow dags are
+* Define with the parameter dags_folder
+* The path must be absolute
+* By default: $AIRFLOW_HOME/dags
+* Problem: too many DAGS, DAGS using many external files,...
+--> How can we structure the DAG folder?
+    + First way is Zip file
+    + Second way is DAG BAG
+        - A DagBag is a collection of DAGs, parsed out of a folder tree and has a high-level configuration settings
+        - Make easier to run distinct environments (dev/staging/prod)
+        - One system can run multiple independent settings set
+        - Allow to add new DAG folders by creating a script in the default DAGS folder
+        - Warning: If a DAG is loaded with a new DagBag and is broken
+                1. Errors are not displayed from the UI
+                2. Can't use the command "airflow list_dags" (only work)
+                3. Still able to see the errors from the web server logs
+
+# .airflowignore
+* Specifies the directories or files in the DAGs folder that Airflow should ignore
+* Equivalent to the .gitignore file
+* Each file corresponds to a regular expression pattern
+* The scope of a .airflowignore is the current directory as well as its subfolders
+* Airflow looks for "DAG" or "airflow" in files. You can avoid wasting scans by using the .airflowignore file
+--> As best practice, always put a .airflowignore file in your DAGs folder
+
+# Dag failure detections
+*Detection on DAGS
+    -DAG level
+        + dagrun_timeout: how long a DagRun should be up before timeing out/falling, so that new  DagRuns can be created ( only effective for scheduled  DagRuns)
+        + sla_miss_callback
+        + on_failure_callback
+        + on_success_callback
+
+# Test failure detections
+*Detection on Tasks
+    -Task level
+        + email (can set more than one emial where to send the alerts)
+        + email_on_failure
+        + email_on_retry
+        + retries
+        + retry_delay
+        + retry_exponential_backoff
+        + max_retry_delay
+        + execution_timeout
+        + on_failure_callback
+        + on_success_callback
+        + on_retry_callback
+
+# Unit testing with Pytest
+*Pytest
+    - Allow for compact test suites
+    - Easier to understand (minimal boilerplate)
+    - pretty and useful failure information
+    - Widely used
+    - Nice documentation
+    - Easy to use
+    - Extensible
+
+*How to test a DAG?
+Five categories:
+    - DAG Validation Tests
+    - DAG/Pipeline Definition Tests
+    - Unit Tests
+    - Integration Tests
+    - End to End Pipeline Tests
+
+* DAG Validation Tests
+    - Common tests for all DAGS in Airflow
+        + Check if valid
+        + Check if there is no cycles
+        + Check default arguments
+        + High level of testing of DAGS
+
+* DAG/Pipeline Definition Tests
+    - Test if modifications are intentional
+        + Check total number of tasks
+        + Check the nature of tasks
+        + Check the upstream and downstream dependencies of tasks
+
+* Unit Tests
+    - Unit testing external functions or custom Operators
+        + Check the logic: Shouldn't have too much logic in your operators. The processing part should be externalized in big data tools.
+                            And Airflow should only call them in the right order.
+                            Keep operators small and clean with one task and try to avoid as much as possible to move or change data through them.
+                            Therefore, the only operators or sensors you should test are those you create on your own.
+                            So should not test the code processing your data within Airflow.
+                            For example: If you are calling Spark from Airflow, you should make your unit tests within Spark and so on
+
+* Integration Tests
+    - Tests if tasks work well with each others using a subset of production data
+        + Check if tasks can exchange data
+        + Check the input of tasks
+        + Check dependencies between multiple tasks
+    - The integrations tests can be complex and slower than the other tests as we gonna need to deal with
+      External tools such as Spark or Postgres
+    - Need development/test/acceptance/production environments
+
+* End to End Pipeline Tests
+    - Check the full logic of your DAGs from the first task to the last one.
+      This will allow to verify if the output of a given DAG is correct.
+      If it is not too slow to execute and so on. In order to make those tests useful, we will use a large copy of the production data to be as close as possible to the conditions in production
+
+* Create different environments
+    1: Development
+        - Faked small data input
+        - Verify:
+            + DAG Validation Tests
+            + DAG/Pipeline Test
+            + Unit Tests
+    2: Test
+        - Larger amount of real data
+        - Verify
+            + Integrations Test
+    3: Acceptance
+        - Copy production datasets
+        - Verify: End to End Pipeline Tests
+    4: Production
+        - All production data used by the end users
+
+
+# BranchOperator
+    - At the last task, this task is only executed if its parents tasks have succeed. Otherwise, the last task will be skipped
+    - To Address that issue, we need to add "trigger_rule='one_success'"
+
+# Trigger Rules
+    - All operators have a trigger_rule argument which defines the rule by which the generated task get triggered
+    - The default value for trigger_rule is 'all_success' means: trigger this task when all directly upstream tasks have succeeded
+    - This is all available rules that are based on direct parent tasks:
+        + all_success: (default) all parents have succeeded
+        + all_failed: all parents are in a failed or upstream_failed state
+        + all_done: all parents are done with their execution
+        + one_failed: fires as soon as at least one parent has failed, it does not wait for all parents to be done
+        + one_success: fires as soon as at least one parent succeeds, it does not wait for all parents to be done
+        + none_failed: all parents have not failed (failed or upstream_failed) i.e. all parents have succeeded or been skipped
+        + none_skipped: no parent is in a skipped state, i.e. all parents are in a success, failed, or upstream_failed state
+        + dummy: dependencies are just for show, trigger at will
+
+# Variables
+    - Values stored in the metadata database
+    - Either from the CLI or UI
+    - Three columns:
+        + Key
+        + Value
+        + Is encrypted
+    - Can be in JSON format
+        + Example: Key:my_settings Value:{login:"Hello", pass:"secret"} Is encrypted:Yes
+    - There are 2 ways to get the value of variable from airflow
+        1. Using "from airflow.models import Variable" and get a value by using Variable.get("Your key")
+        2. Using Jinja Template: {{ var.value.your_key }} . To get any key, you just need to access to the var.value of airflow
+
+# Templating
+    - Replace placeholders by values at runtime
+    - Based on Jinja Templating
+    - Placeholders: {{}}
+    - Can be used with templated parameters
+
+#  XCOMs
+    - Keep the value of xcom lightweight. Otherwise, use an external system to share data.
+    - For example, implementing the stage-check-exchange pattern where your data is staged into a temporary table after which data quality checks are performed against that table to finally moved the partition to production table
+    - If you do not define key in key parameter, then airflow will automatically set the key is 'return value', and get the latest value of key 'return value'
+
+# TriggerDagRunOperator in Airflow is
+    - An operator that allows you to trigger the execution of another DAG from within a  task in your current DAG.
+    - It enables creating dependencies between DAGs, allowing for more complex and modular workflows.
+    - It can be configured to wait for the triggered DAG to complete and handle the outcome based on the triggered DAG's success or failure
+
+# These args will get passed on to each operator, task, dag
+    - You can override them on a per-task basis during operator initialization
+    - default_args = {
+        'owner': 'airflow',
+        'depends_on_past': False,
+        'start_date': days_ago(2),
+        'email': ['airflow@example.com'],
+        'email_on_failure': False,
+        'email_on_retry': False,
+        'retries': 1,
+        'retry_delay': timedelta(minutes=5),
+        # 'queue': 'bash_queue',
+        # 'pool': 'backfill',
+        # 'priority_weight': 10,
+        # 'end_date': datetime(2016, 1, 1),
+        # 'wait_for_downstream': False,
+        # 'dag': dag,
+        # 'sla': timedelta(hours=2),
+        # 'execution_timeout': timedelta(seconds=300),
+        # 'on_failure_callback': some_function,
+        # 'on_success_callback': some_other_function,
+        # 'on_retry_callback': another_function,
+        # 'sla_miss_callback': yet_another_function,
+        # 'trigger_rule': 'all_success'
+    }

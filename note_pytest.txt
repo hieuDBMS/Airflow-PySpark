@@ -1,0 +1,44 @@
+#Fixture in pytest
+    - Providing a fixed baseline environment for tests
+    - This environment is set up before the test runs and can be cleaned up afterward.
+    - Fixtures are used to set up the conditions required for tests, like creating objects, initializing databases, or preparing data --> test can operate in a consistent state
+    - A Fixture is defined using the '@pytest.fixture' decorator. Once defined it can be passed as an argument to test functions.
+    - pytest will automatically call the fixture function and pass its results to the test
+    - Example :
+        import pytest
+
+        # Define a fixture
+        @pytest.fixture
+        def sample_data():
+            return {"key": "value"}
+
+        # Test function using the fixture
+        def test_sample_data(sample_data):
+            # sample_data is the return value of the fixture
+            assert sample_data["key"] == "value"
+
+    - Fixture scope
+        + Function scope: The fixture is set up and torn down oce per test function (default)
+        + Class scope: The fixture is set up once per test class and shared across all methods in the class
+        + Module scope: The fixture is set up once per module and shared across all test functions in that module
+        + Session scope: The fixture is set up once per session and shared across all tests
+
+    - Example of Fixture scope with Module scope. db_connection is set up once for all tests in the module.
+      The yield statement is used to return the fixture value. Anycode after yield acts as the teardown code, which will run after all tests using the fixture have completed
+        @pytest.fixture(scope="module")
+        def db_connection():
+            # Code to set up a database connection
+            connection = setup_db_connection()
+            yield connection
+            # Code to tear down the connection after tests
+            connection.close()
+
+        def test_query1(db_connection):
+            result = db_connection.query("SELECT * FROM table1")
+            assert result is not None
+
+        def test_query2(db_connection):
+            result = db_connection.query("SELECT * FROM table2")
+            assert result is not None
+
+
